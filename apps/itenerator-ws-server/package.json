@@ -12,11 +12,12 @@
     "dev": "node src/index.ts"
   },
   "dependencies": {
+    "@repo/db": "*",
     "@types/cookie": "^0.6.0",
     "cookie": "^0.7.2",
     "dotenv": "^16.6.1",
     "next-auth": "^4.24.14",
-    "@repo/db": "*",
+    "redis": "^6.1.0",
     "ws": "^8.20.0",
     "zod": "^4.4.3"
   },
