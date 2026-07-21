@@ -9,6 +9,7 @@ interface customToken extends JWT {
   id: string;
 }
 let redisClientConnected = false;
+const ROOMSHASH = "rooms";
 
 async function start() {
   const redisClient = createClient();
@@ -44,6 +45,15 @@ async function start() {
       }
       if (!redisClientConnected)
         socket.close(1011, "sorry!,internal server error");
+
+      socket.on("message", (data) => {
+        try {
+          const dataJson = JSON.parse(String(data));
+          `11`;
+        } catch (error) {
+          socket.close(1002, "invalid inputs");
+        }
+      });
     } else {
       socket.close(1002, " unauthenticated");
     }
