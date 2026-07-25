@@ -1,15 +1,17 @@
-import { WebSocketServer } from "ws";
+import WebSocket, { WebSocketServer } from "ws";
 import { getToken } from "next-auth/jwt";
 import { parse } from "cookie";
 import { createClient } from "redis";
 import "dotenv";
+import z from "zod";
 import type { JWT } from "next-auth/jwt";
 import prisma from "@repo/db";
+import { wsMessageType } from "./zodTypes/zodTypes.js";
 interface customToken extends JWT {
   id: string;
 }
 let redisClientConnected = false;
-const ROOMSHASH = "rooms";
+const rooms = new Map<string, Set<WebSocket>>();
 
 async function start() {
   const redisClient = createClient();
@@ -37,23 +39,57 @@ async function start() {
     if (token) {
       const { id } = token as customToken;
       console.log("upgraded");
-      const hasTrips = await prisma.tripMember.findFirst({
+      const hasTrips = await prisma.tripMember.findMany({
         where: { userId: id },
       });
-      if (!hasTrips) {
-        socket.close(1002, "sorry! you do not have any trips ");
+      if (!(hasTrips.length > 0)) {
+        return socket.close(1002, "sorry! you do not have any trips ");
       }
       if (!redisClientConnected)
-        socket.close(1011, "sorry!,internal server error");
+        return socket.close(1011, "sorry!,internal server error");
 
-      socket.on("message", (data) => {
+      hasTrips.forEach((trip) => {
+        const { tripId } = trip;
+        const roomSet = rooms.get(tripId);
+        if (!roomSet) {
+          const newSet = new Set<WebSocket>();
+          newSet.add(socket);
+          rooms.set(tripId, newSet);
+          return;
+        }
+        const newRoomSet = roomSet.add(socket);
+        rooms.set(tripId, newRoomSet);
+        return;
+      });
+
+      socket.on("message", async (data) => {
         try {
           const dataJson = JSON.parse(String(data));
-          `11`;
+          const { success } = wsMessageType.safeParse(dataJson);
+          if (!success) return socket.close(1002, "invalid inputs");
+          const incomingData: z.infer<typeof wsMessageType> = dataJson;
+          const { tripId, content } = incomingData;
+          const activeRoom = rooms.get(tripId);
+          if (!activeRoom) {
+            return socket.close(1002, "invalid connection");
+          }
+          const currentSocketExists = activeRoom.has(socket);
+          if (!currentSocketExists) {
+            return socket.close(1001, "invlaid connection");
+          }
+          if (activeRoom.size === 1) {
+            const streamId = await redisClient.xAdd("messages", "*", {
+              tripId,
+              senderId: id,
+              content,
+            });
+            return;
+          }
         } catch (error) {
           socket.close(1002, "invalid inputs");
         }
       });
+      socket.send("connected");
     } else {
       socket.close(1002, " unauthenticated");
     }
