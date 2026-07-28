@@ -10,6 +10,11 @@ export default async function POST(req: NextRequest) {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id)
       return NextResponse.json({ msg: "unauthenticated" }, { status: 401 });
+    if (session.user.name)
+      return NextResponse.json(
+        { msg: "you already have a name" },
+        { status: 300 },
+      );
     const { id } = session.user;
     const reqBody = await req.json();
     const { success } = addNameSchema.safeParse(reqBody);
