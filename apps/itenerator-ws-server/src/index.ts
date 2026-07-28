@@ -7,6 +7,7 @@ import z from "zod";
 import type { JWT } from "next-auth/jwt";
 import prisma from "@repo/db";
 import { wsMessageType } from "./zodTypes/zodTypes.js";
+import { v7 as uuidv7 } from "uuid";
 interface customToken extends JWT {
   id: string;
 }
@@ -68,7 +69,7 @@ async function start() {
           const { success } = wsMessageType.safeParse(dataJson);
           if (!success) return socket.close(1002, "invalid inputs");
           const incomingData: z.infer<typeof wsMessageType> = dataJson;
-          const { tripId, content } = incomingData;
+          const { tripId, content, name } = incomingData;
           const activeRoom = rooms.get(tripId);
           if (!activeRoom) {
             return socket.close(1002, "invalid connection");
@@ -77,14 +78,39 @@ async function start() {
           if (!currentSocketExists) {
             return socket.close(1001, "invlaid connection");
           }
+          const currentMessageId = uuidv7();
+          const messageAckObject = {
+            type: "message-ack",
+            name,
+            msg_id: currentMessageId,
+            content,
+
+            userId: id,
+          };
           if (activeRoom.size === 1) {
-            const streamId = await redisClient.xAdd("messages", "*", {
+            const streamElementId = await redisClient.xAdd("messages", "*", {
               tripId,
               senderId: id,
+              msg_id: currentMessageId,
               content,
             });
+            socket.send(JSON.stringify(messageAckObject));
             return;
           }
+          const streamElementId = await redisClient.xAdd("messages", "*", {
+            tripId,
+            senderId: id,
+            msg_id: currentMessageId,
+
+            content,
+          });
+          socket.send(JSON.stringify(messageAckObject));
+          activeRoom.forEach((roomSocket) => {
+            if (roomSocket === socket) return;
+            roomSocket.send(
+              JSON.stringify({ name, senderId: id, tripId, content }),
+            );
+          });
         } catch (error) {
           socket.close(1002, "invalid inputs");
         }
