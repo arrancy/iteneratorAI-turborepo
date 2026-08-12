@@ -130,7 +130,7 @@ export const aiResponseHandler = async (req: NextRequest, userId: string) => {
 
     contents: JSON.stringify(userObject),
   });
-
+  const encoder = new TextEncoder();
   function responseToStream() {
     return new ReadableStream({
       async pull(controller) {
@@ -153,7 +153,7 @@ export const aiResponseHandler = async (req: NextRequest, userId: string) => {
           return;
         }
         finalItenerary += value.text;
-        controller.enqueue(value.text);
+        controller.enqueue(encoder.encode(value.text));
       },
     });
   }
