@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   const { inviteId } = incomingData;
   const inviteIsReal = await prisma.invite.findUnique({
     where: { id: inviteId },
-    include: { trip: true },
+    include: { trip: true, sender: true },
   });
   if (!inviteIsReal)
     return NextResponse.json({ msg: "invalid inputs" }, { status: 400 });
@@ -50,12 +50,9 @@ export async function POST(req: NextRequest) {
     actingUserId: userInvited,
     inviteId: inviteIsReal.id,
     tripId: tripId,
-    text: `${userInvited} has accepted your invite to join the trip to ${inviteIsReal.trip.destination}`,
+    text: `${name} has accepted your invite to join the trip to ${inviteIsReal.trip.destination}`,
   };
-  const inviteSenderId = notificationEmitter.emit(
-    `user:${senderUserId}`,
-    eventInputs,
-  );
+  notificationEmitter.emit(`user:${senderUserId}`, eventInputs);
   return NextResponse.json({ msg: "invite accepted" });
   // retrieval , checking , second call updation , no transaction needed
 }
