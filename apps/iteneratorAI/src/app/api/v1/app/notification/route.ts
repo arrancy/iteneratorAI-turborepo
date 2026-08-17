@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
     const sseStream = new ReadableStream({
       async start(controller) {
         console.log("stream has started");
+        controller.enqueue(encoder.encode(`: connected\n\n`));
         const eventName = `user:${id}`;
         const listener = (args: NotificationEventArgs) => {
           const eventString = `data: ${JSON.stringify(args)}\n\n`;

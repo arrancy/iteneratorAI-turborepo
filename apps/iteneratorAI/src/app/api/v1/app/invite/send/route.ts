@@ -8,8 +8,9 @@ import {
   NotificationEventArgs,
   NotificationPurpose,
 } from "@/lib/notificationEmitter/notificationEventEmitter";
-export default async function POST(req: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
+    console.log("reached req");
     const auth = await requireAuth();
     if (!auth.success) return auth.response;
     const { id, name } = auth.details;
