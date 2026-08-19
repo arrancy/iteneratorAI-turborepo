@@ -12,3 +12,10 @@ export const wsMessageType = z.object({
   type: z.enum(["message"]),
   content: z.string().min(1).max(10000),
 });
+//sample object
+// const abc = {
+//   tripId: "cmssoro6o00014fhuurvrpisq",
+//   name: "RUTURAJ CHONDEKAR",
+//   type: "message",
+//   content: "hello there",
+// };
