@@ -37,6 +37,10 @@ async function start() {
 
     console.log("here");
     console.log(token);
+    let tripMemberMap: Map<
+      string,
+      { id: string; userId: string; tripId: string }
+    > | null = null;
     if (token) {
       const { id } = token as customToken;
       console.log("upgraded");
@@ -60,6 +64,10 @@ async function start() {
         }
         const newRoomSet = roomSet.add(socket);
         rooms.set(tripId, newRoomSet);
+        const tripMemberMapTemp = new Map(
+          hasTrips.map((tripMember) => [tripMember.tripId, tripMember]),
+        );
+        tripMemberMap = tripMemberMapTemp;
         return;
       });
 
@@ -88,9 +96,13 @@ async function start() {
             userId: id,
           };
           if (activeRoom.size === 1) {
+            if (!tripMemberMap) return socket.close(1002, "bad req");
+            const tripMemberObject = tripMemberMap.get(tripId);
+            if (!tripMemberObject) return socket.close(1002, "bad req");
+
             const streamElementId = await redisClient.xAdd("messages", "*", {
               tripId,
-              senderId: id,
+              senderId: tripMemberObject?.id,
               msg_id: currentMessageId,
               content,
             });
