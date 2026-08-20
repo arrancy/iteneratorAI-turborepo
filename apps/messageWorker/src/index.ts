@@ -118,11 +118,15 @@ async function start() {
           console.error("could not put message in db , it remains unacked");
           continue;
         }
+        console.log(
+          "the message is in database : " + JSON.stringify(messageInDb),
+        );
         const messageAcked = await redisClient.xAck(
           streamKey,
           groupName,
           streamId,
         );
+        console.log(messageAcked + " the message has been acknowledged");
       } catch (error) {
         console.error(error);
         continue;
