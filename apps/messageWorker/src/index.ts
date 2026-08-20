@@ -6,6 +6,7 @@ async function start() {
   try {
     const redisClient = createClient();
     await redisClient.connect();
+    console.log("redis client connected");
     redisClient.on("error", (err) => {
       console.error("redis client error : " + err);
     });
@@ -81,17 +82,47 @@ async function start() {
 
     while (true) {
       try {
-        const message = await redisClient.xReadGroup(
+        const messages = await redisClient.xReadGroup(
           groupName,
           "worker-1",
           [{ key: streamKey, id: ">" }],
           { COUNT: 1, BLOCK: 5000 },
         );
 
-        if (!message) {
+        if (!messages || messages.length === 0) {
           await new Promise((r) => setTimeout(r, 200));
           continue;
         }
+
+        const streamEntry = messages[0];
+        if (streamEntry?.name !== streamKey) {
+          console.log("look into this crazy edge case");
+          continue;
+        }
+        const mainObject: {
+          id: string;
+          message: {
+            msg_id: string;
+            tripId: string;
+            senderId: string;
+            content: string;
+          };
+        } = streamEntry.messages[0];
+        if (!mainObject) continue;
+        const streamId = mainObject.id;
+        const { msg_id, tripId, senderId, content } = mainObject.message;
+        const messageInDb = await prisma.message.create({
+          data: { id: msg_id, tripId, content, senderId, streamId },
+        });
+        if (!messageInDb) {
+          console.error("could not put message in db , it remains unacked");
+          continue;
+        }
+        const messageAcked = await redisClient.xAck(
+          streamKey,
+          groupName,
+          streamId,
+        );
       } catch (error) {
         console.error(error);
         continue;
