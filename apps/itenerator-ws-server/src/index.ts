@@ -47,6 +47,7 @@ async function start() {
       const hasTrips = await prisma.tripMember.findMany({
         where: { userId: id },
       });
+      console.log(JSON.stringify(hasTrips));
       if (!(hasTrips.length > 0)) {
         return socket.close(1002, "sorry! you do not have any trips ");
       }
@@ -64,13 +65,15 @@ async function start() {
         }
         const newRoomSet = roomSet.add(socket);
         rooms.set(tripId, newRoomSet);
-        const tripMemberMapTemp = new Map(
-          hasTrips.map((tripMember) => [tripMember.tripId, tripMember]),
-        );
-        tripMemberMap = tripMemberMapTemp;
+        console.log("reached here 1");
+
+        console.log("reached here 2");
+
         return;
       });
-
+      tripMemberMap = new Map(
+        hasTrips.map((tripMember) => [tripMember.tripId, tripMember]),
+      );
       socket.on("message", async (data) => {
         try {
           const dataJson = JSON.parse(String(data));
@@ -96,13 +99,13 @@ async function start() {
             userId: id,
           };
           if (activeRoom.size === 1) {
-            if (!tripMemberMap) return socket.close(1002, "bad req");
+            if (!tripMemberMap) return socket.close(1002, "bad req 1");
             const tripMemberObject = tripMemberMap.get(tripId);
-            if (!tripMemberObject) return socket.close(1002, "bad req");
+            if (!tripMemberObject) return socket.close(1002, "bad req 2");
 
             const streamElementId = await redisClient.xAdd("messages", "*", {
               tripId,
-              senderId: tripMemberObject?.id,
+              senderId: tripMemberObject.id,
               msg_id: currentMessageId,
               content,
             });
