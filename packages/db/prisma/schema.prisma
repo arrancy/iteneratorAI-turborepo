@@ -14,6 +14,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Products {
+  premium
+  pro
+}
 enum ImageFormats {
   png
   jpeg
@@ -68,6 +72,7 @@ model User {
   profilePicture ProfilePicture?
   createdTrips   Trip[]
   trips          TripMember[]
+  orders         Order[]
   sentInvites     Invite[] @relation("SentInvites")
   receivedInvites  Invite[] @relation("ReceivedInvites")
   @@map("users")
@@ -137,7 +142,14 @@ model Message {
   createdAt DateTime @default(now())
 
 }
- 
+ model Order {
+  id String @id @default(uuid())
+  razorpayOrderId String @unique
+  product Products
+  receipt String @unique
+  userId String 
+  user User @relation(fields: [userId], references: [id])
+ }
 model VerificationToken {
   identifier String
   token      String
