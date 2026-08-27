@@ -18,6 +18,21 @@ enum Products {
   premium
   pro
 }
+enum Currencies {
+  INR 
+  USD 
+  EUR 
+}
+enum PaymentStatus {
+  captured 
+  failed
+}
+
+enum OrderStatus {
+  pending 
+  completed
+  failed 
+}
 enum ImageFormats {
   png
   jpeg
@@ -143,12 +158,37 @@ model Message {
 
 }
  model Order {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
   razorpayOrderId String @unique
   product Products
+  status OrderStatus
   receipt String @unique
   userId String 
   user User @relation(fields: [userId], references: [id])
+  payments Payment[]
+ }
+model Payment {
+  id String @id @default(cuid())
+  razorpayPaymentId String @unique
+  status PaymentStatus
+  orderId String
+  order Order @relation(fields: [orderId], references: [id])
+  currency Currencies
+  amount Int
+  webhookEvents WebhookEvents[]
+
+}
+
+ model WebhookEvents {
+  id String @id @default(cuid())
+  eventId String @unique
+  paymentStatus PaymentStatus
+  paymentId String 
+  payment Payment @relation(fields: [paymentId], references: [id])
+  currency Currencies
+  amount Int
+  
+
  }
 model VerificationToken {
   identifier String
