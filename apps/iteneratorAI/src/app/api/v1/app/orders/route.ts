@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
   try {
     const auth = await requireAuth();
     if (!auth.success) return auth.response;
-    const { id, name } = auth.details;
+    const { id } = auth.details;
     const reqBody = await req.json();
     const { success } = orderSchema.safeParse(reqBody);
     if (!success)
@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
       data: {
         razorpayOrderId: razorpayOrder.id,
         product,
+        status: "pending",
         receipt: razorpayOrder.receipt!,
         userId: id,
       },

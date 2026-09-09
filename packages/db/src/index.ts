@@ -1,9 +1,10 @@
 import "dotenv/config";
-import { PrismaClient } from "./generated/prisma/client.js";
+import { PrismaClient, Prisma } from "./generated/prisma/client.js";
 declare global {
   var prisma: PrismaClient | undefined;
 }
 
 const prisma = globalThis.prisma || new PrismaClient();
 if (process.env.NODE_ENV !== "production") globalThis.prisma = prisma;
+export { Prisma };
 export default prisma;
