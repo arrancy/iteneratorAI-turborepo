@@ -2,7 +2,6 @@ import { headers } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { validateWebhookSignature } from "razorpay/dist/utils/razorpay-utils";
 import prisma, { Prisma } from "@repo/db";
-import { fa } from "zod/v4/locales";
 export async function POST(req: NextRequest) {
   try {
     const reqBody = await req.text();
@@ -29,7 +28,7 @@ export async function POST(req: NextRequest) {
       const amount = incomingData.payload.payment.amount;
       const currency = incomingData.payload.payment.currency;
       const razorpayOrderId = incomingData.payload.payment.order_id;
-      const { shouldProceed } = await prisma.$transaction(async (tx) => {
+      const transactionStatus = await prisma.$transaction(async (tx) => {
         const webhookEventInDb = await tx.webhookEvents.create({
           data: { razorpayPaymentId, paymentStatus, amount, currency, eventId },
         });
@@ -38,17 +37,34 @@ export async function POST(req: NextRequest) {
         });
 
         if (!paymentExists) {
-          const paymentInDb = await tx.payment.create({
-            data: {
-              amount,
-              currency,
-              razorpayPaymentId,
-              razorpayOrderId,
-              status: paymentStatus,
-            },
-          });
-
-          return { shouldProceed: paymentStatus === "captured" };
+          if (paymentStatus === "captured") {
+            const paymentInDb = await tx.payment.create({
+              data: {
+                amount,
+                currency,
+                razorpayPaymentId,
+                razorpayOrderId,
+                status: paymentStatus,
+                paymentFulfillment: {
+                  create: {
+                    fulfilled: false,
+                  },
+                },
+              },
+            });
+            return;
+          } else {
+            const paymentInDb = await tx.payment.create({
+              data: {
+                amount,
+                currency,
+                razorpayPaymentId,
+                razorpayOrderId,
+                status: paymentStatus,
+              },
+            });
+            return;
+          }
         }
         //payment exists and is captured
 
@@ -68,6 +84,8 @@ export async function POST(req: NextRequest) {
         // existing payment is failed and webhook status is also failed
         return { shouldProceed: false };
       });
+
+      return NextResponse.json({ msg: "alright" }, { status: 200 });
     } else {
       return NextResponse.json({ msg: "bad req" }, { status: 400 });
     }

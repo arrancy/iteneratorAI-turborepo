@@ -178,6 +178,15 @@ model Payment {
   order Order @relation(fields: [razorpayOrderId], references: [razorpayOrderId])
   currency Currencies
   amount Int
+  paymentFulfillment PaymentFulfillment?
+
+}
+model PaymentFulfillment {
+  id String @id @default(cuid())
+  paymentId  String @unique
+  fulfilled Boolean
+  createdAt DateTime @default(now())
+  payment Payment @relation(fields: [paymentId], references: [razorpayPaymentId])
 
 }
 
