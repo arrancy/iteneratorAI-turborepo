@@ -15,125 +15,131 @@ let redisClientConnected = false;
 const rooms = new Map<string, Set<WebSocket>>();
 
 async function start() {
-  const redisClient = createClient();
-
   try {
-    await redisClient.connect();
-    redisClientConnected = true;
-  } catch (error) {
-    console.log(error);
-  }
-  const wss = new WebSocketServer({ port: 8080 }, () =>
-    console.log("websocket server started"),
-  );
-
-  wss.on("connection", async (socket, req) => {
-    console.log(req.headers.cookie);
-    const cookies = parse(req.headers.cookie || "");
-    const token = await getToken({
-      req: { cookies, Headers: req.headers } as any,
-      secret: process.env.NEXTAUTH_SECRET!,
+    const redisClient = createClient();
+    redisClient.on("error", () => {
+      console.error("error connecting to redis client");
     });
+    try {
+      await redisClient.connect();
+      redisClientConnected = true;
+    } catch (error) {
+      console.log(error);
+    }
+    const wss = new WebSocketServer({ port: 8080 }, () =>
+      console.log("websocket server started"),
+    );
 
-    console.log("here");
-    console.log(token);
-    let tripMemberMap: Map<
-      string,
-      { id: string; userId: string; tripId: string }
-    > | null = null;
-    if (token) {
-      const { id } = token as customToken;
-      console.log("upgraded");
-      const hasTrips = await prisma.tripMember.findMany({
-        where: { userId: id },
+    wss.on("connection", async (socket, req) => {
+      console.log(req.headers.cookie);
+      const cookies = parse(req.headers.cookie || "");
+      const token = await getToken({
+        req: { cookies, Headers: req.headers } as any,
+        secret: process.env.NEXTAUTH_SECRET!,
       });
-      console.log(JSON.stringify(hasTrips));
-      if (!(hasTrips.length > 0)) {
-        return socket.close(1002, "sorry! you do not have any trips ");
-      }
-      if (!redisClientConnected)
-        return socket.close(1011, "sorry!,internal server error");
 
-      hasTrips.forEach((trip) => {
-        const { tripId } = trip;
-        const roomSet = rooms.get(tripId);
-        if (!roomSet) {
-          const newSet = new Set<WebSocket>();
-          newSet.add(socket);
-          rooms.set(tripId, newSet);
-          return;
+      console.log("here");
+      console.log(token);
+      let tripMemberMap: Map<
+        string,
+        { id: string; userId: string; tripId: string }
+      > | null = null;
+      if (token) {
+        const { id } = token as customToken;
+        console.log("upgraded");
+        const hasTrips = await prisma.tripMember.findMany({
+          where: { userId: id },
+        });
+        console.log(JSON.stringify(hasTrips));
+        if (!(hasTrips.length > 0)) {
+          return socket.close(1002, "sorry! you do not have any trips ");
         }
-        const newRoomSet = roomSet.add(socket);
-        rooms.set(tripId, newRoomSet);
-        console.log("reached here 1");
+        if (!redisClientConnected)
+          return socket.close(1011, "sorry!,internal server error");
 
-        console.log("reached here 2");
-
-        return;
-      });
-      tripMemberMap = new Map(
-        hasTrips.map((tripMember) => [tripMember.tripId, tripMember]),
-      );
-      socket.on("message", async (data) => {
-        try {
-          const dataJson = JSON.parse(String(data));
-          const { success } = wsMessageType.safeParse(dataJson);
-          if (!success) return socket.close(1002, "invalid inputs");
-          const incomingData: z.infer<typeof wsMessageType> = dataJson;
-          const { tripId, content, name } = incomingData;
-          const activeRoom = rooms.get(tripId);
-          if (!activeRoom) {
-            return socket.close(1002, "invalid connection");
+        hasTrips.forEach((trip) => {
+          const { tripId } = trip;
+          const roomSet = rooms.get(tripId);
+          if (!roomSet) {
+            const newSet = new Set<WebSocket>();
+            newSet.add(socket);
+            rooms.set(tripId, newSet);
+            return;
           }
-          const currentSocketExists = activeRoom.has(socket);
-          if (!currentSocketExists) {
-            return socket.close(1001, "invlaid connection");
-          }
-          const currentMessageId = uuidv7();
-          const messageAckObject = {
-            type: "message-ack",
-            name,
-            msg_id: currentMessageId,
-            content,
+          const newRoomSet = roomSet.add(socket);
+          rooms.set(tripId, newRoomSet);
+          console.log("reached here 1");
 
-            userId: id,
-          };
-          if (activeRoom.size === 1) {
-            if (!tripMemberMap) return socket.close(1002, "bad req 1");
-            const tripMemberObject = tripMemberMap.get(tripId);
-            if (!tripMemberObject) return socket.close(1002, "bad req 2");
+          console.log("reached here 2");
 
+          return;
+        });
+        tripMemberMap = new Map(
+          hasTrips.map((tripMember) => [tripMember.tripId, tripMember]),
+        );
+        socket.on("message", async (data) => {
+          try {
+            const dataJson = JSON.parse(String(data));
+            const { success } = wsMessageType.safeParse(dataJson);
+            if (!success) return socket.close(1002, "invalid inputs");
+            const incomingData: z.infer<typeof wsMessageType> = dataJson;
+            const { tripId, content, name } = incomingData;
+            const activeRoom = rooms.get(tripId);
+            if (!activeRoom) {
+              return socket.close(1002, "invalid connection");
+            }
+            const currentSocketExists = activeRoom.has(socket);
+            if (!currentSocketExists) {
+              return socket.close(1001, "invlaid connection");
+            }
+            const currentMessageId = uuidv7();
+            const messageAckObject = {
+              type: "message-ack",
+              name,
+              msg_id: currentMessageId,
+              content,
+
+              userId: id,
+            };
+            if (activeRoom.size === 1) {
+              if (!tripMemberMap) return socket.close(1002, "bad req 1");
+              const tripMemberObject = tripMemberMap.get(tripId);
+              if (!tripMemberObject) return socket.close(1002, "bad req 2");
+
+              const streamElementId = await redisClient.xAdd("messages", "*", {
+                tripId,
+                senderId: tripMemberObject.id,
+                msg_id: currentMessageId,
+                content,
+              });
+              socket.send(JSON.stringify(messageAckObject));
+              return;
+            }
             const streamElementId = await redisClient.xAdd("messages", "*", {
               tripId,
-              senderId: tripMemberObject.id,
+              senderId: id,
               msg_id: currentMessageId,
+
               content,
             });
             socket.send(JSON.stringify(messageAckObject));
-            return;
+            activeRoom.forEach((roomSocket) => {
+              if (roomSocket === socket) return;
+              roomSocket.send(
+                JSON.stringify({ name, senderId: id, tripId, content }),
+              );
+            });
+          } catch (error) {
+            socket.close(1002, "invalid inputs");
           }
-          const streamElementId = await redisClient.xAdd("messages", "*", {
-            tripId,
-            senderId: id,
-            msg_id: currentMessageId,
-
-            content,
-          });
-          socket.send(JSON.stringify(messageAckObject));
-          activeRoom.forEach((roomSocket) => {
-            if (roomSocket === socket) return;
-            roomSocket.send(
-              JSON.stringify({ name, senderId: id, tripId, content }),
-            );
-          });
-        } catch (error) {
-          socket.close(1002, "invalid inputs");
-        }
-      });
-      socket.send("connected");
-    } else {
-      socket.close(1002, " unauthenticated");
-    }
-  });
+        });
+        socket.send("connected");
+      } else {
+        socket.close(1002, " unauthenticated");
+      }
+    });
+  } catch (error) {
+    console.error(error);
+  }
 }
 start();

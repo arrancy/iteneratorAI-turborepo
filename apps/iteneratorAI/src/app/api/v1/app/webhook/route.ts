@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { validateWebhookSignature } from "razorpay/dist/utils/razorpay-utils";
 import prisma, { Prisma } from "@repo/db";
 import { createClient } from "redis";
+
 export async function POST(req: NextRequest) {
   try {
     const reqBody = await req.text();
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
         const paymentStatus = incomingData.payload.payment.status;
         if (paymentStatus === "authorized") {
           return NextResponse.json({ msg: "alright" }, { status: 200 });
+          // because authorised and captured are seperate webhooks , we do not have anything to do with the authorised one, we only care about the captured one
         }
         const razorpayPaymentId = incomingData.payload.payment.id;
         const amount = incomingData.payload.payment.amount;
@@ -66,8 +68,19 @@ export async function POST(req: NextRequest) {
                     },
                   },
                 },
+                include: { paymentFulfillment: true, order: true },
               });
-              return;
+              const paymentFulfillmentId = paymentInDb.paymentFulfillment?.id;
+              const { userId } = paymentInDb.order;
+              if (!paymentFulfillmentId) {
+                throw new Error("database error");
+              }
+              return redisClient.xAdd("paymentsToFulfill", "*", {
+                razorpayOrderId,
+                razorpayPaymentId,
+                paymentFulfillmentId,
+                userId,
+              });
             } else {
               const paymentInDb = await tx.payment.create({
                 data: {
@@ -93,8 +106,17 @@ export async function POST(req: NextRequest) {
                 status: "captured",
                 paymentFulfillment: { create: { fulfilled: false } },
               },
+              include: { paymentFulfillment: true, order: true },
             });
-            return;
+            const { userId } = updatedPayment.order;
+            const paymentFulfillmentId = updatedPayment.paymentFulfillment?.id;
+            if (!paymentFulfillmentId) throw new Error("database error");
+            return redisClient.xAdd("paymentsToFulfill", "*", {
+              razorpayOrderId,
+              razorpayPaymentId,
+              userId,
+              paymentFulfillmentId,
+            });
           }
           return;
         });
