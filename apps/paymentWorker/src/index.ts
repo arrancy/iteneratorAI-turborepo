@@ -71,7 +71,7 @@ async function start() {
                   order: { include: { user: true } },
                 },
               });
-              if (!fullPaymentObject?.paymentFulfillment) return;
+              if (!fullPaymentObject?.paymentFulfillment?.id) return;
               const isPaymentFulfilled =
                 fullPaymentObject.paymentFulfillment.fulfilled;
               if (isPaymentFulfilled) {
@@ -85,31 +85,45 @@ async function start() {
 
               const { product, userId } = fullPaymentObject.order;
               const currentExpiry = fullPaymentObject.order.user.productExpiry;
-              if (!userId || !currentExpiry) return;
+              if (!userId) return;
+              async function fulfillFurtherTransaction(newExpiryDate: Date) {
+                if (!fullPaymentObject?.paymentFulfillment?.id) return;
+                if (!claimedEntryContents) return;
+
+                const userMarkedPaid = tx.user.update({
+                  where: { id: userId },
+                  data: {
+                    paidUser: true,
+                    product,
+                    productExpiry: newExpiryDate,
+                  },
+                });
+                const paymentFulfilled = await tx.paymentFulfillment.update({
+                  where: { id: fullPaymentObject.paymentFulfillment.id },
+                  data: { fulfilled: true },
+                });
+
+                if (!paymentFulfilled) return;
+                const messageAcked = await redisClient.xAck(
+                  streamKey,
+                  groupName,
+                  claimedEntryContents.id,
+                );
+              }
+              if (!currentExpiry) {
+                const newExpiryDate = new Date();
+                newExpiryDate.setDate(newExpiryDate.getDate() + 30);
+                await fulfillFurtherTransaction(newExpiryDate);
+                return;
+              }
 
               const newExpiryDate = new Date(currentExpiry);
               newExpiryDate.setDate(currentExpiry.getDate() + 30);
-              const userMarkedPaid = tx.user.update({
-                where: { id: userId },
-                data: {
-                  paidUser: true,
-                  product,
-                  productExpiry: newExpiryDate,
-                },
-              });
-              const paymentFulfilled = await tx.paymentFulfillment.update({
-                where: { id: fullPaymentObject.paymentFulfillment.id },
-                data: { fulfilled: true },
-              });
-
-              if (!paymentFulfilled) return;
-              const messageAcked = await redisClient.xAck(
-                streamKey,
-                groupName,
-                claimedEntryContents.id,
-              );
+              await fulfillFurtherTransaction(newExpiryDate);
+              return;
             },
           );
+          continue;
         } catch (error) {
           console.error(error);
         }
@@ -149,7 +163,19 @@ async function start() {
             order: { include: { user: true } },
           },
         });
+        if (!dbFullPaymentObject?.paymentFulfillment) {
+          throw new Error("could not get proper response from database");
+        }
+        if (dbFullPaymentObject.paymentFulfillment.fulfilled) {
+          return;
+        }
+
+        const { product } = dbFullPaymentObject.order;
+        const currentExpiry = dbFullPaymentObject.order.user.productExpiry;
       });
-    } catch (error) {}
+    } catch (error) {
+      console.error(error);
+      continue;
+    }
   }
 }
