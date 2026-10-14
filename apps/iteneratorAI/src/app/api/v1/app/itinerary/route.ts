@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { aiResponseHandler } from "./handler";
-import { authFunction, requireAuth } from "@/utils/authUtils";
+import { requireAuth } from "@/utils/authUtils";
 
 export async function POST(req: NextRequest) {
   try {
