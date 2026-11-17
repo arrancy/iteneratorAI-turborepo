@@ -170,8 +170,45 @@ async function start() {
           return;
         }
 
-        const { product } = dbFullPaymentObject.order;
+        const { product, userId } = dbFullPaymentObject.order;
         const currentExpiry = dbFullPaymentObject.order.user.productExpiry;
+        async function fulfillFurtherTransaction(newExpiryDate: Date) {
+          if (
+            !streamPaymentObject ||
+            !dbFullPaymentObject?.paymentFulfillment?.id
+          )
+            return;
+
+          const userMarkedPaid = await tx.user.update({
+            where: { id: userId },
+            data: {
+              product,
+              productExpiry: newExpiryDate,
+              paidUser: true,
+            },
+          });
+          const paymentFulfilled = await tx.paymentFulfillment.update({
+            where: { id: dbFullPaymentObject.paymentFulfillment.id },
+            data: { fulfilled: true },
+          });
+          if (!paymentFulfilled) return;
+          const messageAcked = await redisClient.xAck(
+            streamKey,
+            groupName,
+            streamPaymentObject.id,
+          );
+        }
+        if (!currentExpiry) {
+          const newExpiryDate = new Date();
+          newExpiryDate.setDate(newExpiryDate.getDate() + 30);
+          await fulfillFurtherTransaction(newExpiryDate);
+          return;
+        }
+
+        const newExpiryDate = new Date();
+        newExpiryDate.setDate(currentExpiry.getDate() + 30);
+        await fulfillFurtherTransaction(newExpiryDate);
+        return;
       });
     } catch (error) {
       console.error(error);
