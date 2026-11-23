@@ -19,27 +19,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ msg: "invalid inputs" }, { status: 400 });
     const incomingData: z.infer<typeof orderSchema> = reqBody;
     const { product } = incomingData;
-    const razorpayOrder = await razorpay.orders.create({
-      amount: product === "premium" ? 50000 : 60000,
-      currency: "INR",
-      receipt: "receipt-" + Date.now(),
-      notes: { product },
-    });
+    const { orderInDb, razorpayOrder } = await prisma.$transaction(
+      async (tx) => {
+        const razorpayOrder = await razorpay.orders.create({
+          amount: product === "premium" ? 50000 : 60000,
+          currency: "INR",
+          receipt: "receipt-" + Date.now(),
+          notes: { product },
+        });
 
+        const orderInDb = await tx.order.create({
+          data: {
+            razorpayOrderId: razorpayOrder.id,
+            product,
+            status: "pending",
+            receipt: razorpayOrder.receipt!,
+            userId: id,
+          },
+        });
+        return { orderInDb, razorpayOrder };
+      },
+    );
     if (!razorpayOrder || !razorpayOrder.id)
       return NextResponse.json(
         { msg: "payment servers down" },
         { status: 500 },
       );
-    const orderInDb = await prisma.order.create({
-      data: {
-        razorpayOrderId: razorpayOrder.id,
-        product,
-        status: "pending",
-        receipt: razorpayOrder.receipt!,
-        userId: id,
-      },
-    });
     if (!orderInDb)
       return NextResponse.json(
         { msg: "internal server error" },
