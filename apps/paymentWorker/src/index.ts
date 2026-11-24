@@ -74,18 +74,27 @@ async function start() {
               if (!fullPaymentObject?.paymentFulfillment?.id) return;
               const isPaymentFulfilled =
                 fullPaymentObject.paymentFulfillment.fulfilled;
+              const { product, userId } = fullPaymentObject.order;
+              const currentExpiry = fullPaymentObject.order.user.productExpiry;
+              if (!userId) return;
               if (isPaymentFulfilled) {
                 const messageAcked = await redisClient.xAck(
                   streamKey,
                   groupName,
                   claimedEntryContents.id,
                 );
+                await redisClient.publish(
+                  "paymentFulfillment",
+                  JSON.stringify({
+                    product,
+                    userId,
+                    paymentId: fullPaymentObject.razorpayPaymentId,
+                    orderId: fullPaymentObject.razorpayOrderId,
+                  }),
+                );
                 return;
               }
 
-              const { product, userId } = fullPaymentObject.order;
-              const currentExpiry = fullPaymentObject.order.user.productExpiry;
-              if (!userId) return;
               async function fulfillFurtherTransaction(newExpiryDate: Date) {
                 if (!fullPaymentObject?.paymentFulfillment?.id) return;
                 if (!claimedEntryContents) return;
@@ -109,6 +118,16 @@ async function start() {
                   groupName,
                   claimedEntryContents.id,
                 );
+                await redisClient.publish(
+                  "paymentFulfillment",
+                  JSON.stringify({
+                    product,
+                    userId,
+                    paymentId: fullPaymentObject.razorpayPaymentId,
+                    orderId: fullPaymentObject.razorpayOrderId,
+                  }),
+                );
+                return;
               }
               if (!currentExpiry) {
                 const newExpiryDate = new Date();
