@@ -10,12 +10,19 @@ export async function subscribeToPubSub() {
     await subscriber.connect();
     subscriber.subscribe("paymentFullfilment", (message) => {
       try {
-        const event: { userId: string; product: string } = JSON.parse(message);
+        const event: {
+          userId: string;
+          product: string;
+          orderId: string;
+          paymentId: string;
+        } = JSON.parse(message);
         const userId = event.userId;
         const eventArgs = {
           type: "notification",
           purpose: "payment fulfillment",
           product: event.product,
+          orderId: event.orderId,
+          paymentId: event.paymentId,
         };
         notificationEmitter.emit(`user:${userId}`, eventArgs);
       } catch (error) {
