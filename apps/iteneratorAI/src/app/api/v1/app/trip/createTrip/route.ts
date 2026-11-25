@@ -1,11 +1,9 @@
-import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import { photonRequestFunction } from "@/utils/photonRequest";
 import { createTripSchema } from "@/zodTypes/createTrip";
-import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@repo/db";
 import z from "zod";
-import { authFunction, requireAuth } from "@/utils/authUtils";
+import { requireAuth } from "@/utils/authUtils";
 
 export async function POST(req: NextRequest) {
   try {
