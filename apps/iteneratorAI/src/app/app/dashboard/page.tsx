@@ -12,6 +12,8 @@ export default function Dashboard() {
       >
         signout
       </button>
+
+      <button className="mx-auto absolute top-1/2 bottom-1/2">pay now</button>
     </>
   );
 }
